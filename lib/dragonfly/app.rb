@@ -47,7 +47,7 @@ module Dragonfly
     configurable_attr :log do Logger.new('/var/tmp/dragonfly.log') end
     configurable_attr :trust_file_extensions, true
     configurable_attr :content_disposition
-    configurable_attr :content_filename, Response::DEFAULT_FILENAME
+    configurable_attr :content_filename, Dragonfly::Response::DEFAULT_FILENAME
 
     attr_reader :analyser
     attr_reader :processor
@@ -103,6 +103,11 @@ module Dragonfly
       registered_mime_types[file_ext_string(format)]
     end
 
+    def response_headers
+      @response_headers ||= {}
+    end
+    configuration_method :response_headers
+
     def define_url(&block)
       @url_proc = block
     end
@@ -139,6 +144,22 @@ module Dragonfly
         alias included included_with_dragonfly
       end
     end
+    
+    # Deprecated methods
+    def url_path_prefix=(thing)
+      raise NoMethodError, "url_path_prefix is deprecated - please use url_format, e.g. url_format = '/media/:job/:basename.:format' - see docs for more details"
+    end
+    configuration_method :url_path_prefix=
+
+    def url_suffix=(thing)
+      raise NoMethodError, "url_suffix is deprecated - please use url_format, e.g. url_format = '/media/:job/:basename.:format' - see docs for more details"
+    end
+    configuration_method :url_suffix=
+
+    def infer_mime_type_from_file_ext=(bool)
+      raise NoMethodError, "infer_mime_type_from_file_ext is deprecated - please use trust_file_extensions = #{bool.inspect} instead"
+    end
+    configuration_method :infer_mime_type_from_file_ext=
 
     private
 

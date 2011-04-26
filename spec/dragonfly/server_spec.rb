@@ -51,6 +51,14 @@ describe Dragonfly::Server do
         response.body.should == 'HELLO THERE'
       end
 
+      
+      it "should work ok with + symbols" do
+        @app.processor.add(:thumb){|t, geometry| "eggs" }
+        @app.datastore.should_receive(:retrieve).with('2011/04/20/20_55_04_114_female_1.jpg').and_return "EGGS"
+        response = request(@server, '/media/BAhbB1sHOgZmSSIpMjAxMS8wNC8yMC8yMF81NV8wNF8xMTRfZmVtYWxlXzEuanBnBjoGRVRbCDoGcDoKdGh1bWJJIgwxMDB4NzU+BjsGVA')
+        response.status.should == 200
+        response.body.should == 'eggs'
+      end
     end
 
     it "should return successfully even if the job is in the query string" do
@@ -199,32 +207,55 @@ describe Dragonfly::Server do
     end
 
   end
-  
+
   describe "before_serve callback" do
-    
+
     before(:each) do
       @app = test_app
       @app.generator.add(:test){ "TEST" }
       @server = Dragonfly::Server.new(@app)
       @job = @app.generate(:test)
-      @x = x = ""
-      @server.before_serve do |job, env|
-        x << job.data
+    end
+
+    context "with no stop in the callback" do
+      before(:each) do
+        @x = x = ""
+        @server.before_serve do |job, env|
+          x << job.data
+        end
+      end
+
+      it "should be called before serving" do
+        response = request(@server, "/#{@job.serialize}")
+        response.body.should == 'TEST'
+        @x.should == 'TEST'
+      end
+
+      it "should not be called before serving a 404 page" do
+        response = request(@server, "blah")
+        response.status.should == 404
+        @x.should == ""
       end
     end
 
-    it "should be called before serving" do
-      response = request(@server, "/#{@job.serialize}")
-      response.body.should == 'TEST'
-      @x.should == 'TEST'
+    context "with a throw :halt in the callback" do
+      before(:each) do
+        @server.before_serve do |job, env|
+          throw :halt, [200, {}, ['hello']]
+        end
+      end
+      
+      it 'return the specified response instead of job.result' do
+        response = request(@server, "/#{@job.serialize}")
+        response.body.should == 'hello'
+      end
+      
+      it "should not apply the job if not asked to" do
+        @app.generator.should_not_receive(:generate)
+        response = request(@server, "/#{@job.serialize}")
+      end
     end
-    
-    it "should not be called before serving a 404 page" do
-      response = request(@server, "blah")
-      response.status.should == 404
-      @x.should == ""
-    end
-    
+
   end
-  
+
 end

@@ -50,6 +50,7 @@ module Dragonfly
           set_magic_attributes
           update_meta
           self.class.run_callbacks(:after_assign, model, self) if should_run_callbacks?
+          retain! if should_retain?
         end
         value
       end
@@ -103,18 +104,24 @@ module Dragonfly
       attr_writer :should_run_callbacks
       
       def should_run_callbacks?
-        @should_run_callbacks
+        !!@should_run_callbacks
       end
 
       # Retaining for avoiding uploading more than once
 
       def retain!
-        if changed?
+        if changed? && job
           store_job!
           self.retained = true
         end
       end
 
+      attr_writer :should_retain
+      
+      def should_retain?
+        !!@should_retain
+      end
+      
       def retained?
         !!@retained
       end
