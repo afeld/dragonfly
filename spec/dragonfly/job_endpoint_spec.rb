@@ -86,6 +86,12 @@ describe Dragonfly::JobEndpoint do
     response.status.should == 404
   end
 
+  it "should return a 404 if the datastore raises bad uid" do
+    @job.should_receive(:apply).and_raise(Dragonfly::DataStorage::BadUID)
+    response = make_request(@job)
+    response.status.should == 404
+  end
+
   describe "ETag" do
     it "should return an ETag" do
       response = make_request(@job)
@@ -190,6 +196,33 @@ describe Dragonfly::JobEndpoint do
       }
       response = make_request(@job, 'QUERY_STRING' => 'a=egg')
       response['Cache-Control'].should == 'GNUGegg'
+    end
+  end
+
+  describe "setting the job in the env for communicating with other rack middlewares" do
+    before(:each) do
+      @app.generator.add(:test_data){ "TEST DATA" }
+      @job = @app.generate(:test_data)
+      @endpoint = Dragonfly::JobEndpoint.new(@job)
+      @middleware = Class.new do
+        def initialize(app)
+          @app = app
+        end
+        
+        def call(env)
+          @app.call(env)
+          throw :result, env['dragonfly.job']
+        end
+      end
+    end
+    it "should add the job to env" do
+      middleware, endpoint = @middleware, @endpoint
+      app = Rack::Builder.new do
+        use middleware
+        run endpoint
+      end
+      result = catch(:result){ Rack::MockRequest.new(app).get('/') }
+      result.should == @job
     end
   end
 

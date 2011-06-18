@@ -1,9 +1,14 @@
 module Dragonfly
   class Server
 
+    # Exceptions
+    class JobNotAllowed < RuntimeError; end
+
     include Loggable
     include Configurable
     
+    configurable_attr :allow_fetch_file, false
+    configurable_attr :allow_fetch_url, false
     configurable_attr :dragonfly_url, '/dragonfly'
     configurable_attr :protect_from_dos_attacks, false
     configurable_attr :url_format, '/:job/:basename.:format'
@@ -28,6 +33,7 @@ module Dragonfly
         dragonfly_response
       elsif (params = url_mapper.params_for(env["PATH_INFO"], env["QUERY_STRING"])) && params['job']
         job = Job.deserialize(params['job'], app)
+        validate_job!(job)
         job.validate_sha!(params['sha']) if protect_from_dos_attacks
         response = Response.new(job, env)
         catch(:halt) do
@@ -39,13 +45,16 @@ module Dragonfly
       else
         [404, {'Content-Type' => 'text/plain', 'X-Cascade' => 'pass'}, ['Not found']]
       end
-    rescue Serializer::BadString, Job::InvalidArray => e
-      log.warn(e.message)
-      [404, {'Content-Type' => 'text/plain'}, ['Not found']]
     rescue Job::NoSHAGiven => e
       [400, {"Content-Type" => 'text/plain'}, ["You need to give a SHA parameter"]]
     rescue Job::IncorrectSHA => e
       [400, {"Content-Type" => 'text/plain'}, ["The SHA parameter you gave (#{e}) is incorrect"]]
+    rescue JobNotAllowed => e
+      log.warn(e.message)
+      [403, {"Content-Type" => 'text/plain'}, ["Forbidden"]]
+    rescue Serializer::BadString, Job::InvalidArray => e
+      log.warn(e.message)
+      [404, {'Content-Type' => 'text/plain'}, ['Not found']]
     end
 
     def url_for(job, opts={})
@@ -65,7 +74,7 @@ module Dragonfly
 
     def url_mapper
       @url_mapper ||= UrlMapper.new(url_format,
-        :job => '[\w+]',
+        :job => '[\w+~]',
         :basename => '[^\/]',
         :format => '[^\.]'
       )
@@ -97,6 +106,13 @@ module Dragonfly
         },
         [body]
       ]
+    end
+
+    def validate_job!(job)
+      if job.fetch_file_step && !allow_fetch_file ||
+         job.fetch_url_step && !allow_fetch_url
+        raise JobNotAllowed, "Dragonfly Server doesn't allow requesting job with steps #{job.steps.inspect}"
+      end
     end
 
   end

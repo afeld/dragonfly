@@ -19,12 +19,14 @@ module Dragonfly
         [304, cache_headers, []]
       elsif request.head?
         job.apply
+        env['dragonfly.job'] = job
         [200, success_headers, []]
       elsif request.get?
         job.apply
-        [200, success_headers, job.result]
+        env['dragonfly.job'] = job
+        [200, success_headers, job]
       end
-    rescue DataStorage::DataNotFound => e
+    rescue DataStorage::DataNotFound, DataStorage::BadUID => e
       app.log.warn(e.message)
       [404, {"Content-Type" => 'text/plain'}, ['Not found']]
     end

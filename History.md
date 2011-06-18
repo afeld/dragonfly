@@ -1,3 +1,42 @@
+0.9.4 (2011-06-10)
+==================
+Fixes
+-----
+- Made use of Rack calling `close` on the response body to clean up tempfiles.
+  The response body is now the job, which delegates `each` to the temp_object.
+
+0.9.3 (2011-06-03)
+==================
+Fixes
+-----
+- TempObject#to_file sets file permissions 644 - copying wasn't previously guaranteeing this
+- Added TempObject#close and closed?, which Rack uses to clean up tempfiles
+- replaced '/' characters with '~' in base64 encoded urls (they were confusing url recognition)
+
+0.9.2 (2011-05-19)
+==================
+Features
+--------
+- Added env['dragonfly.job'] for use in other Rack middlewares
+- Added CookieMonster middleware for removing 'Set-Cookie' headers
+
+Fixes
+-----
+- Remove 'Set-Cookie' header from any requests coming from a rails route
+
+0.9.1 (2011-05-11)
+==================
+Features
+--------
+- Added reflection methods `app.processor_methods`, `app.generator_methods` and `app.job_methods`
+
+Fixes
+-----
+- Improved performance of `resize_and_crop` method, using imagemagick built-in '^' operator
+- Improved server security validations
+- Deal with Excon::Errors::SocketError: EOFError errors which get thrown sometimes from S3 connection
+- Allow files with '..' (but not '../') in the middle of their name in file data store 
+
 0.9.0 (2011-04-27)
 ==================
 Features
@@ -49,13 +88,20 @@ Fixes
 -----
 - Performance tweaks regarding temp_objects model accessors and job objects
 
-0.8.4 (2010-04-27)
+0.8.5 (2011-05-11)
+==================
+Fixes
+-----
+- Allow filenames that have '..' in them (but not '../') in the filedatastore
+- Better security for server
+
+0.8.4 (2011-04-27)
 ==================
 Fixes
 -----
 - Security fix for file data store
 
-0.8.2 (2010-01-11)
+0.8.2 (2011-01-11)
 ==================
 Fixes
 -----
