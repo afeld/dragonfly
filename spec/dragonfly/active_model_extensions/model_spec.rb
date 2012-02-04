@@ -190,15 +190,13 @@ describe Item do
         @item.destroy
       end
 
-      it "should return the url for the data" do
-        @item.preview_image.url.should =~ %r<^/\w+$>
-      end
-
       it "should destroy the old data when the uid is set manually" do
         @app.datastore.should_receive(:destroy).with('some_uid')
         @item.preview_image_uid = 'some_known_uid'
         @item.save!
       end
+
+      # SEE model_urls_spec.rb for urls
 
       describe "when accessed by a new model object" do
         before(:each) do
@@ -222,6 +220,7 @@ describe Item do
           @app.datastore.should_receive(:destroy).with('some_uid')
           @item.save!
         end
+        
         it "should not try to destroy the old data if saved again" do
           @app.datastore.should_receive(:destroy).with('some_uid')
           @item.save!
@@ -257,6 +256,10 @@ describe Item do
         it "should return the new data" do
           @item.preview_image.data.should == 'ANEWDATASTRING'
         end
+
+        it 'should mark the attribute as changed' do
+          @item.preview_image_uid_changed?.should be_true
+        end
       end
 
       describe "when it is set to nil" do
@@ -278,6 +281,11 @@ describe Item do
           @app.datastore.should_receive(:destroy).with('some_uid')
           @item.destroy
         end
+        
+        it 'should mark the attribute as changed' do
+          @item.preview_image_uid_changed?.should be_true
+        end
+        
       end
 
       describe "when the data can't be found" do
@@ -496,6 +504,24 @@ describe Item do
         @item.should be_valid
       end
 
+      it "should allow case sensitivity to be turned off when :as is specified" do
+        @item.should_receive(:its_friday).and_return(false)
+        Item.class_eval do
+          validates_property :mime_type, :of => :preview_image, :as => 'WronG/TypE', :case_sensitive => false
+        end
+        @item.preview_image = "WRONG TYPE"
+        @item.should be_valid
+      end
+
+      it "should allow case sensitivity to be turned off when :in is specified" do
+        @item.should_receive(:its_friday).and_return(false)
+        Item.class_eval do
+          validates_property :mime_type, :of => :preview_image, :in => ['WronG/TypE'], :case_sensitive => false
+        end
+        @item.preview_image = "WRONG TYPE"
+        @item.should be_valid
+      end
+
       it "should require either :as or :in as an argument" do
         lambda{
           Item.class_eval do
@@ -598,27 +624,6 @@ describe Item do
 
     describe "meta from magic attributes" do
       
-      it "should set the meta for the magic attribute when assigned" do
-        @item.preview_image = '123'
-        @item.preview_image.meta[:some_analyser_method].should == 'abc1'
-      end
-      
-      it "should not set meta for non-magic attributes with the same prefix when assigned" do
-        @item.preview_image = '123'
-        @item.preview_image.meta[:blah_blah].should be_nil
-      end
-
-      it "should update the meta for the magic attribute when something else is assigned" do
-        @item.preview_image = '123'
-        @item.preview_image = '456'
-        @item.preview_image.meta[:some_analyser_method].should == 'abc4'
-      end
-      
-      it "should include the meta for size too" do
-        @item.preview_image = '123'
-        @item.preview_image.meta[:size].should == 3
-      end
-
       it "should store the meta for the original file name if it exists" do
         data = 'jasdlkf sadjl'
         data.stub!(:original_filename).and_return('hello.png')
@@ -626,11 +631,16 @@ describe Item do
         @item.preview_image.meta[:name].should == 'hello.png'
       end
       
-      it "should still have the meta after reload" do
+      it "should include magic attributes in the saved meta" do
         @item.preview_image = '123'
         @item.save!
-        item = Item.find(@item.id)
-        item.preview_image.meta[:some_analyser_method].should == 'abc1'
+        @app.fetch(@item.preview_image_uid).meta[:some_analyser_method].should == 'abc1'
+      end
+
+      it "should include the size in the saved meta" do
+        @item.preview_image = '123'
+        @item.save!
+        @app.fetch(@item.preview_image_uid).meta[:size].should == 3
       end
 
     end
@@ -646,10 +656,10 @@ describe Item do
         @item.preview_image.respond_to?(:number_of_As).should be_true
       end
       it "should include analyser methods in methods" do
-        @item.preview_image.methods.include?('number_of_As'.to_method_name).should be_true
+        @item.preview_image.methods.map{|m| m.to_sym }.should include(:number_of_As)
       end
       it "should include analyser methods in public_methods" do
-        @item.preview_image.public_methods.include?('number_of_As'.to_method_name).should be_true
+        @item.preview_image.public_methods.map{|m| m.to_sym }.should include(:number_of_As)
       end
 
       it "should update when something new is assigned" do
@@ -677,6 +687,12 @@ describe Item do
           @item.preview_image.send(:job).should_not_receive(:size)
           @item.should_receive("preview_image_size").and_return(17)
           @item.preview_image.size.should == 17
+        end
+
+        it "should use the magic attribute for name if there is one, and not the job object" do
+          @item.preview_image.send(:job).should_not_receive(:name)
+          @item.should_receive("preview_image_name").and_return('jeffrey.bungle')
+          @item.preview_image.name.should == 'jeffrey.bungle'
         end
 
         it "should delegate 'size' to the job object if there is no magic attribute for it" do
@@ -751,7 +767,7 @@ describe Item do
         it "should save it correctly" do
           @item.save!
           item = Item.find(@item.id)
-          item.preview_image.apply.meta.should include_hash(:slime => 'balls')
+          item.preview_image.meta.should include_hash(:slime => 'balls')
         end
         it "should include meta info about the model" do
           @item.save!
@@ -1220,7 +1236,16 @@ describe Item do
     it "should return the saved stuff if assigned and retained" do
       @item.preview_image = 'hello'
       @item.preview_image.name = 'dog.biscuit'
-      @app.datastore.should_receive(:store).with(a_temp_object_with_data('hello'), anything).and_return('new/uid')
+      @app.datastore.should_receive(:store).with do |temp_object, opts|
+        temp_object.data.should == 'hello'
+        temp_object.meta.should == {
+          :name => "dog.biscuit",
+          :some_analyser_method => "HELLO",
+          :size => 5,
+          :model_class => "Item",
+          :model_attachment => :preview_image
+        }
+      end.and_return('new/uid')
       @item.preview_image.retain!
       Dragonfly::Serializer.marshal_decode(@item.retained_preview_image).should == {
         :uid => 'new/uid',
@@ -1267,6 +1292,11 @@ describe Item do
       )
       @item = Item.new
     end
+
+    it "should be retained" do
+      @item.dragonfly_attachments[:preview_image].should_receive(:retain!)
+      @item.retained_preview_image = @pending_string
+    end
     
     it "should update the attributes" do
       @item.retained_preview_image = @pending_string
@@ -1276,19 +1306,12 @@ describe Item do
       @item.preview_image_name.should == 'dog.biscuit'
     end
     
-    it "should update the attachment meta" do
-      @item.retained_preview_image = @pending_string
-      @item.preview_image.meta[:some_analyser_method].should == 'HELLO'
-      @item.preview_image.meta[:size].should == 5
-      @item.preview_image.meta[:name].should == 'dog.biscuit'
-    end
-    
     it "should be a normal fetch job" do
       @item.retained_preview_image = @pending_string
       @app.datastore.should_receive(:retrieve).with('new/uid').and_return(Dragonfly::TempObject.new('retrieved yo'))
       @item.preview_image.data.should == 'retrieved yo'
     end
-    
+
     it "should give the correct url" do
       @item.retained_preview_image = @pending_string
       @item.preview_image.url.should =~ %r{^/\w+/dog.biscuit$}

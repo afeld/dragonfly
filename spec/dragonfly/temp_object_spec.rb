@@ -5,7 +5,7 @@ describe Dragonfly::TempObject do
   ####### Helper Methods #######
 
   def sample_path(filename)
-    File.join(SAMPLES_DIR, filename)
+    SAMPLES_DIR.join(filename)
   end
 
   def new_tempfile(data='HELLO')
@@ -15,14 +15,14 @@ describe Dragonfly::TempObject do
     tempfile
   end
 
-  def new_file(data='HELLO', path="/tmp/test_file")
+  def new_file(data='HELLO', path="tmp/test_file")
     File.open(path, 'w') do |f|
       f.write(data)
     end
     File.new(path)
   end
 
-  def new_pathname(data='HELLO', path="/tmp/test_file")
+  def new_pathname(data='HELLO', path="tmp/test_file")
     File.open(path, 'w') do |f|
       f.write(data)
     end
@@ -104,7 +104,11 @@ describe Dragonfly::TempObject do
 
       describe "path" do
         it "should return an absolute file path" do
-          @temp_object.path.should =~ %r{^/\w+}
+          if Dragonfly.running_on_windows?
+            @temp_object.path.should =~ %r{^[a-zA-Z]:/\w+}
+          else
+            @temp_object.path.should =~ %r{^/\w+}
+          end
         end
       end
 
@@ -116,11 +120,11 @@ describe Dragonfly::TempObject do
 
       describe "to_file" do
         before(:each) do
-          @filename = 'eggnog.txt'
-          FileUtils.rm(@filename) if File.exists?(@filename)
+          @filename = 'tmp/eggnog.txt'
+          FileUtils.rm_f(@filename) if File.exists?(@filename)
         end
         after(:each) do
-          FileUtils.rm(@filename) if File.exists?(@filename)
+          FileUtils.rm_f(@filename) if File.exists?(@filename)
         end
         it "should write to a file" do
           @temp_object.to_file(@filename)
@@ -139,6 +143,20 @@ describe Dragonfly::TempObject do
           @temp_object.to_file(@filename)
           File::Stat.new(@filename).mode.to_s(8).should =~ /644$/
         end
+        it "should allow setting different permissions" do
+          @temp_object.to_file(@filename, :mode => 0755)
+          File::Stat.new(@filename).mode.to_s(8).should =~ /755$/
+        end
+        it "should create intermediate subdirs" do
+          filename = 'tmp/gog/mcgee'
+          @temp_object.to_file(filename)
+          File.exists?(filename).should be_true
+          FileUtils.rm_rf('tmp/gog')
+        end
+        it "should allow not creating intermediate subdirs" do
+          filename = 'tmp/gog/mcgee'
+          expect{ @temp_object.to_file(filename, :mkdirs => false) }.to raise_error()
+        end
       end
 
     end
@@ -151,16 +169,6 @@ describe Dragonfly::TempObject do
           part.bytesize.should == 8192
         end
         parts.last.bytesize.should <= 8192
-      end
-      it "should yield the number of bytes specified in the class configuration" do
-        klass = Class.new(Dragonfly::TempObject)
-        temp_object = new_temp_object(File.read(sample_path('round.gif')), klass)
-        klass.block_size = 3001
-        parts = get_parts(temp_object)
-        parts[0...-1].each do |part|
-          part.length.should == 3001
-        end
-        parts.last.length.should <= 3001
       end
     end
     
@@ -207,6 +215,11 @@ describe Dragonfly::TempObject do
       temp_object.should_not_receive(:tempfile)
       temp_object.each{}
     end
+    
+    it "should use set the file extension in path from the name" do
+      temp_object = Dragonfly::TempObject.new("hi", :name => 'dark.cloud')
+      temp_object.path.should =~ /\.cloud$/
+    end
   end
 
   describe "initializing from a tempfile" do
@@ -246,13 +259,17 @@ describe Dragonfly::TempObject do
     it "should return the file's path" do
       file = new_file('HELLO')
       temp_object = Dragonfly::TempObject.new(file)
-      temp_object.path.should == file.path
+      temp_object.path.should == File.expand_path(file.path)
     end
     
     it "should return an absolute path even if the file wasn't instantiated like that" do
-      file = new_file('HELLO', 'testfile')
+      file = new_file('HELLO', 'tmp/bongo')
       temp_object = Dragonfly::TempObject.new(file)
-      temp_object.path.should =~ %r{^/\w.*testfile}
+      if Dragonfly.running_on_windows?
+        temp_object.path.should =~ %r{^[a-zA-Z]:/\w.*bongo}
+      else
+        temp_object.path.should =~ %r{^/\w.*bongo}
+      end
       file.close
       FileUtils.rm(file.path)
     end
@@ -275,13 +292,17 @@ describe Dragonfly::TempObject do
     it "should return the file's path" do
       pathname = new_pathname('HELLO')
       temp_object = Dragonfly::TempObject.new(pathname)
-      temp_object.path.should == pathname.to_s
+      temp_object.path.should == File.expand_path(pathname.to_s)
     end
     
     it "should return an absolute path even if the pathname is relative" do
-      pathname = new_pathname('HELLO', 'testfile')
+      pathname = new_pathname('HELLO', 'tmp/bingo')
       temp_object = Dragonfly::TempObject.new(pathname)
-      temp_object.path.should =~ %r{^/\w.*testfile}
+      if Dragonfly.running_on_windows?
+        temp_object.path.should =~ %r{^[a-zA-Z]:/\w.*bingo}
+      else
+        temp_object.path.should =~ %r{^/\w.*bingo}
+      end
       pathname.delete
     end
   end
@@ -310,6 +331,26 @@ describe Dragonfly::TempObject do
     end
   end
 
+  describe "initialize from a Rack::Test::UploadedFile" do
+    def initialization_object(data)
+      # The criteria we're using to determine if an object is a
+      # Rack::Test::UploadedFile is if it responds to path
+      #
+      # We can't just check if it is_a?(Rack::Test::UploadedFile) because that
+      # class may not always be present.
+      uploaded_file = mock("mock_uploadedfile")
+      uploaded_file.stub!(:path).and_return File.expand_path('tmp/test_file')
+      uploaded_file.stub!(:original_filename).and_return('foo.jpg')
+
+      # Create a real file with the contents required at the correct path
+      new_file(data, 'tmp/test_file')
+
+      uploaded_file
+    end
+
+    it_should_behave_like "common behaviour"
+  end
+
   describe "original_filename" do
     before(:each) do
       @obj = new_tempfile
@@ -324,7 +365,7 @@ describe Dragonfly::TempObject do
       Dragonfly::TempObject.new(@obj).original_filename.should be_nil
     end
     it "should set the name if the initial object is a file object" do
-      file = File.new(SAMPLES_DIR + '/round.gif')
+      file = File.new(SAMPLES_DIR.join('round.gif'))
       temp_object = Dragonfly::TempObject.new(file)
       temp_object.original_filename.should == 'round.gif'
     end
@@ -332,6 +373,69 @@ describe Dragonfly::TempObject do
       pathname = Pathname.new(SAMPLES_DIR + '/round.gif')
       temp_object = Dragonfly::TempObject.new(pathname)
       temp_object.original_filename.should == 'round.gif'
+    end
+  end
+  
+  describe "meta" do
+    it "should default to an empty hash" do
+      Dragonfly::TempObject.new('sdf').meta.should == {}
+    end
+    it "should allow setting on initialize" do
+      Dragonfly::TempObject.new('sdf', :dub => 'wub').meta.should == {:dub => 'wub'}
+    end
+    it "should allow setting" do
+      temp_object = Dragonfly::TempObject.new('boo')
+      temp_object.meta = {:far => 'gone'}
+      temp_object.meta.should == {:far => 'gone'}
+    end
+  end
+
+  describe "name" do
+    it "should default to nil" do
+      Dragonfly::TempObject.new("HELLO").name.should be_nil
+    end
+    it "should allow setting the name via the meta" do
+      Dragonfly::TempObject.new("HELLO", :name => 'gosh.pig').name.should == "gosh.pig"
+    end
+    it "should fallback to the original filename if not set" do
+      content = "HELLO"
+      content.should_receive(:original_filename).and_return("some.egg")
+      temp_object = Dragonfly::TempObject.new(content)
+      temp_object.name.should == "some.egg"
+    end
+    it "should prefer the specified name to the original filename" do
+      content = "HELLO"
+      content.stub!(:original_filename).and_return("brase.nose")
+      temp_object = Dragonfly::TempObject.new("HELLO", :name => 'some.gug')
+      temp_object.name.should == "some.gug"
+    end
+    it "should allow setting with a setter" do
+      temp_object = Dragonfly::TempObject.new("HELLO")
+      temp_object.name = 'bugs'
+      temp_object.name.should == "bugs"
+    end
+  end
+  
+  describe "sanity check for using HasFilename" do
+    it "should act like Dragonfly::HasFilename" do
+      temp_object = Dragonfly::TempObject.new('h', :name => 'one.big.park')
+      temp_object.ext = 'smeagol'
+      temp_object.name.should == 'one.big.smeagol'
+    end
+  end
+  
+  describe "unique_id" do
+    before(:each) do
+      @temp_object = Dragonfly::TempObject.new('hello')
+    end
+    it "should return a unique id" do
+      @temp_object.unique_id.should =~ /^\d+$/
+    end
+    it "should be unique" do
+      @temp_object.unique_id.should_not == Dragonfly::TempObject.new('hello').unique_id
+    end
+    it "should not change" do
+      @temp_object.unique_id.should == @temp_object.unique_id
     end
   end
 

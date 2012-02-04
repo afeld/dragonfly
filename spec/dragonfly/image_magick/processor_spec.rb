@@ -3,8 +3,7 @@ require 'spec_helper'
 describe Dragonfly::ImageMagick::Processor do
   
   before(:each) do
-    sample_file = File.dirname(__FILE__) + '/../../../samples/beach.png' # 280x355
-    @image = Dragonfly::TempObject.new(File.new(sample_file))
+    @image = Dragonfly::TempObject.new(SAMPLES_DIR.join('beach.png')) # 280x355
     @processor = Dragonfly::ImageMagick::Processor.new
   end
 
@@ -238,6 +237,17 @@ describe Dragonfly::ImageMagick::Processor do
     end
   end
 
+  describe "auto-orient" do
+    it "should rotate an image according to exif information" do
+      @image = Dragonfly::TempObject.new(SAMPLES_DIR.join('beach.jpg'))
+      @image.should have_width(355)
+      @image.should have_height(280)
+      image = @processor.auto_orient(@image)
+      image.should have_width(280)
+      image.should have_height(355)
+    end
+  end
+
   describe "flip" do
     it "should flip the image, leaving the same dimensions" do
       image = @processor.flip(@image)
@@ -260,6 +270,7 @@ describe Dragonfly::ImageMagick::Processor do
       image.should have_width(56)
       image.should have_height(71)
     end
+    
     it "should allow for general convert commands with added format" do
       image, extra = @processor.convert(@image, '-scale 56x71', :gif)
       image.should have_width(56)
@@ -271,6 +282,11 @@ describe Dragonfly::ImageMagick::Processor do
     it "should work for commands with parenthesis" do
       image = @processor.convert(@image, "\\( +clone -sparse-color Barycentric '0,0 black 0,%[fx:h-1] white' -function polynomial 2,-2,0.5 \\) -compose Blur -set option:compose:args 15 -composite")
       image.should have_width(280)
+    end
+
+    it "should work for files with spaces in the name" do
+      image = Dragonfly::TempObject.new(SAMPLES_DIR.join('white pixel.png'))
+      @processor.convert(image, "-resize 2x2!").should have_width(2)
     end
   end
   

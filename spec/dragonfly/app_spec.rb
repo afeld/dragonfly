@@ -101,9 +101,17 @@ describe Dragonfly::App do
       @app.store(temp_object)
     end
     it "should allow storing with extra stuff" do
-      @app.datastore.should_receive(:store).with(
-        a_temp_object_with_data("HELLO"), :meta => {:egg => :head}, :option => :blarney
-      )
+      @app.datastore.should_receive(:store).with do |temp_object, opts|
+        temp_object.data.should == 'HELLO'
+        temp_object.meta.should == {:egg => :head}
+        opts[:option].should == :blarney
+      end
+      @app.store("HELLO", :meta => {:egg => :head}, :option => :blarney)
+    end
+    it "should still pass in meta in the opts arg, for deprecated use of meta" do
+      @app.datastore.should_receive(:store).with do |temp_object, opts|
+        opts[:meta].should == {:egg => :head}
+      end
       @app.store("HELLO", :meta => {:egg => :head}, :option => :blarney)
     end
   end
@@ -137,6 +145,7 @@ describe Dragonfly::App do
       @app = test_app.configure do |c|
         c.processor.add(:milk){}
         c.generator.add(:butter){}
+        c.analyser.add(:cheese){}
         c.job(:bacon){}
       end
       
@@ -146,6 +155,9 @@ describe Dragonfly::App do
     end
     it "should return generator methods" do
       @app.generator_methods.should == [:butter]
+    end
+    it "should return analyser methods" do
+      @app.analyser_methods.should == [:cheese]
     end
     it "should return job methods" do
       @app.job_methods.should == [:bacon]

@@ -3,8 +3,7 @@ require 'spec_helper'
 describe Dragonfly::ImageMagick::Analyser do
   
   before(:each) do
-    image_path = File.dirname(__FILE__) + '/../../../samples/beach.png'
-    @image = Dragonfly::TempObject.new(File.new(image_path))
+    @image = Dragonfly::TempObject.new(SAMPLES_DIR.join('beach.png'))
     @analyser = Dragonfly::ImageMagick::Analyser.new
   end
 
@@ -59,6 +58,21 @@ describe Dragonfly::ImageMagick::Analyser do
     suppressing_stderr do
       @analyser.image?(Dragonfly::TempObject.new('blah')).should == false
     end
+  end
+
+  it "should work for images with spaces in the filename" do
+    image = Dragonfly::TempObject.new(SAMPLES_DIR.join('white pixel.png'))
+    @analyser.width(image).should == 1
+  end
+  
+  it "should work (width) for images with capital letter extensions" do
+    image = Dragonfly::TempObject.new(SAMPLES_DIR.join('DSC02119.JPG'))
+    @analyser.width(image).should == 1
+  end
+
+  it "should work (width) for images with numbers in the format" do
+    image = Dragonfly::TempObject.new(SAMPLES_DIR.join('a.jp2'))
+    @analyser.width(image).should == 1
   end
 
 end

@@ -1,3 +1,81 @@
+0.9.10 (2012-01-11)
+===================
+Fixes
+-----
+- FileDataStore was causing errors when the storage path was flat (not in a directory structure)
+
+0.9.9 (2011-12-30)
+==================
+Features
+--------
+- Created tempfiles use the original file extension if known
+- Added `:case_sensitive` option to `validates_property` for dealing with upper-case extensions and mime-types.
+- Github Markup syntax on readme for code highlighting
+- S3DataStore can use https for remote urls (either configurable or per-url)
+- `to_file` can take `:mode` option for setting custom permissions
+- `to_file` creates intermediate subdirs by default, can be turned off with `:mkdirs => false` option
+- Added some more S3 regions
+
+Changes
+-------
+- Datastores now use `temp_object.meta`, not the second arg passed in to `store`
+- `meta`, `name`, etc. now lazily load the job on an attachment - previously you'd have to call `apply` to get the meta from the datastore
+- When assigning an image via the activemodel extensions, mark that uid attribute will change
+- `validates_property` uses Rails 3 validators
+- Deprecated saved 'heroku' config, in favour of configuring S3 explicitly
+
+Fixes
+-----
+- Model attachment urls are consistent now - the name is appended to the url (with format "/:job/:name") ONLY if it has the "name" magic attribute
+- `identify` wasn't working properly for files with capital letter extensions
+- S3 datastore sets content mime_type by default
+- File extensions with numbers like JP2 weren't being processed/analysed properly
+- Protect against object_ids being recycled and messing with analyser cache
+- All url segments are correctly url-escaped now
+- Fixed TempObject File.open mode
+- S3DataStore was breaking on bucket_exists? when using AWS IAM
+- Put CookieMonster before ActionDispatch::Cookies in rack middleware stack - that way Rack::Cache won't come between them and mess things up
+
+0.9.8 (2011-09-08)
+==================
+Fixes
+-----
+- Regenerated gemspec again with ruby 1.8.7 - didn't seem to be fixed
+
+0.9.7 (2011-09-08)
+==================
+Fixes
+-----
+- Regenerated gemspec to overcome annoying yaml issue (http://blog.rubygems.org/2011/08/31/shaving-the-yaml-yacc.html)
+
+0.9.6 (2011-09-06)
+==================
+Features
+--------
+- Allow setting `content_type` when storing in Mongo GridFS
+
+Changes
+-------
+- Tests use Rails 3.1
+
+Fixes
+-----
+- Moved from fog's deprecated `get_object_url` to `get_object_https_url`
+- Allow initializing a TempObject with Rack::Test::UploadedFile
+- Tests working in Windows (except feature that uses FileCommandAnalyser)
+- Better shell quoting
+
+0.9.5 (2011-07-27)
+==================
+Features
+--------
+- Added reflection method `app.analyser_methods`
+
+Fixes
+-----
+- Fixed `convert` and `identify` for files with spaces
+- Fixed size validations for Rails 3.0.7
+
 0.9.4 (2011-06-10)
 ==================
 Fixes

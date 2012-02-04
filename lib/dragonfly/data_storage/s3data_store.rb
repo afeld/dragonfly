@@ -11,15 +11,20 @@ module Dragonfly
       configurable_attr :bucket_name
       configurable_attr :access_key_id
       configurable_attr :secret_access_key
-      configurable_attr :use_filesystem, true
       configurable_attr :region
+      configurable_attr :use_filesystem, true
       configurable_attr :storage_headers, {'x-amz-acl' => 'public-read'}
+      configurable_attr :url_scheme, 'http'
 
       REGIONS = {
-        'us-east-1'      => 's3.amazonaws.com',  #default
-        'eu-west-1'      => 's3-eu-west-1.amazonaws.com',
+        'us-east-1' => 's3.amazonaws.com',  #default
+        'us-west-1' => 's3-us-west-1.amazonaws.com',
+        'us-west-2' => 's3-us-west-2.amazonaws.com',
+        'ap-northeast-1' => 's3-ap-northeast-1.amazonaws.com',
         'ap-southeast-1' => 's3-ap-southeast-1.amazonaws.com',
-        'us-west-1'      => 's3-us-west-1.amazonaws.com'
+        'eu-west-1' => 's3-eu-west-1.amazonaws.com',
+        'sa-east-1' => 's3-sa-east-1.amazonaws.com',
+        'sa-east-1' => 's3-sa-east-1.amazonaws.com'
       }
 
       def initialize(opts={})
@@ -33,17 +38,18 @@ module Dragonfly
         ensure_configured
         ensure_bucket_initialized
         
-        meta = opts[:meta] || {}
         headers = opts[:headers] || {}
-        uid = opts[:path] || generate_uid(meta[:name] || temp_object.original_filename || 'file')
+        mime_type = opts[:mime_type] || opts[:content_type]
+        headers['Content-Type'] = mime_type if mime_type
+        uid = opts[:path] || generate_uid(temp_object.name || 'file')
         
         rescuing_socket_errors do
           if use_filesystem
             temp_object.file do |f|
-              storage.put_object(bucket_name, uid, f, full_storage_headers(headers, meta))
+              storage.put_object(bucket_name, uid, f, full_storage_headers(headers, temp_object.meta))
             end
           else
-            storage.put_object(bucket_name, uid, temp_object.data, full_storage_headers(headers, meta))
+            storage.put_object(bucket_name, uid, temp_object.data, full_storage_headers(headers, temp_object.meta))
           end
         end
         
@@ -69,9 +75,14 @@ module Dragonfly
 
       def url_for(uid, opts={})
         if opts && opts[:expires]
-          storage.get_object_url(bucket_name, uid, opts[:expires])
+          if storage.respond_to?(:get_object_https_url) # fog's get_object_url is deprecated (aug 2011)
+            storage.get_object_https_url(bucket_name, uid, opts[:expires])
+          else
+            storage.get_object_url(bucket_name, uid, opts[:expires])
+          end
         else
-          "http://#{bucket_name}.s3.amazonaws.com/#{uid}"
+          scheme = opts[:scheme] || url_scheme
+          "#{scheme}://#{bucket_name}.s3.amazonaws.com/#{uid}"
         end
       end
 
@@ -89,7 +100,7 @@ module Dragonfly
       end
 
       def bucket_exists?
-        rescuing_socket_errors{ storage.get_bucket_location(bucket_name) }
+        rescuing_socket_errors{ storage.get_bucket(bucket_name) }
         true
       rescue Excon::Errors::NotFound => e
         false

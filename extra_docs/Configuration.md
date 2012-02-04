@@ -83,8 +83,7 @@ Otherwise it should be done anywhere where general setup is done, early on.
 
 Reflecting on configuration
 ---------------------------
-There are a few methods you can call on the `app` to see what processors etc. are registered: `processor_methods`, `generator_methods`
-and `job_methods`.
+There are a few methods you can call on the `app` to see what processors etc. are registered: `processor_methods`, `generator_methods`, `analyser_methods` and `job_methods`.
 
 Saved configurations
 ====================
@@ -112,14 +111,6 @@ The {Dragonfly::Config::Rails Rails configuration} points the log to the Rails l
 registers the {Dragonfly::Analysis::FileCommandAnalyser FileCommandAnalyser} for helping with mime_type validations.
 
 The file 'dragonfly/rails/images' does this for you.
-
-Heroku
-------
-
-    app.configure_with(:heroku, 's3_bucket_name')
-
-The {Dragonfly::Config::Heroku Heroku configuration} configures it to use the {Dragonfly::DataStorage::S3DataStore}, using Heroku's config attributes.
-See {file:Heroku} for more info.
 
 Custom Saved Configuration
 --------------------------

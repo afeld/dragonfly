@@ -59,17 +59,17 @@ describe Dragonfly::DataStorage::S3DataStore do
       @data_store.store(temp_object).should_not == @data_store.store(temp_object2)
     end
 
-    it "should use the name in the meta if set" do
-      temp_object = Dragonfly::TempObject.new('eggheads')
-      uid = @data_store.store(temp_object, :meta => {:name =>  'doobie'})
+    it "should use the name from the temp_object if set" do
+      temp_object = Dragonfly::TempObject.new('eggheads', :name => 'doobie')
+      uid = @data_store.store(temp_object)
       uid.should =~ /doobie$/
       data, meta = @data_store.retrieve(uid)
       data.should == 'eggheads'
     end
 
     it "should work ok with files with funny names" do
-      temp_object = Dragonfly::TempObject.new('eggheads')
-      uid = @data_store.store(temp_object, :meta => {:name =>  'A Picture with many spaces in its name (at 20:00 pm).png'})
+      temp_object = Dragonfly::TempObject.new('eggheads', :name => 'A Picture with many spaces in its name (at 20:00 pm).png')
+      uid = @data_store.store(temp_object)
       uid.should =~ /A_Picture_with_many_spaces_in_its_name_at_20_00_pm_\.png$/
       data, meta = @data_store.retrieve(uid)
       data.should == 'eggheads'
@@ -224,6 +224,13 @@ describe Dragonfly::DataStorage::S3DataStore do
       end
       @data_store.store(@temp_object, :headers => {'hello' => 'there'})
     end
+    
+    it "should store with the content-type if passed in" do
+      @data_store.storage.should_receive(:put_object) do |_, __, ___, headers|
+        headers['Content-Type'].should == 'text/plain'
+      end
+      @data_store.store(@temp_object, :mime_type => 'text/plain')
+    end
   end
 
   describe "urls for serving directly" do
@@ -244,6 +251,15 @@ describe Dragonfly::DataStorage::S3DataStore do
     it "should give an expiring url" do
       @data_store.url_for(@uid, :expires => 1301476942).should =~
         %r{^https://#{@data_store.domain}/#{BUCKET_NAME}/some/path/on/s3\?AWSAccessKeyId=#{@data_store.access_key_id}&Signature=[\w%]+&Expires=1301476942$}
+    end
+
+    it "should allow for using https" do
+      @data_store.url_for(@uid, :scheme => 'https').should == "https://#{BUCKET_NAME}.s3.amazonaws.com/some/path/on/s3"
+    end
+
+    it "should allow for always using https" do
+      @data_store.url_scheme = 'https'
+      @data_store.url_for(@uid).should == "https://#{BUCKET_NAME}.s3.amazonaws.com/some/path/on/s3"
     end
     
   end

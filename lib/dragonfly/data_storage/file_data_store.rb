@@ -15,11 +15,10 @@ module Dragonfly
       configurable_attr :store_meta, true
 
       def store(temp_object, opts={})
-        meta = opts[:meta] || {}
         relative_path = if opts[:path]
           opts[:path]
         else
-          filename = meta[:name] || temp_object.original_filename || 'file'
+          filename = temp_object.name || 'file'
           relative_path = relative_path_for(filename)
         end
 
@@ -28,9 +27,8 @@ module Dragonfly
           until !File.exist?(path)
             path = disambiguate(path)
           end
-          prepare_path(path)
           temp_object.to_file(path).close
-          store_meta_data(path, meta) if store_meta
+          store_meta_data(path, temp_object.meta) if store_meta
         rescue Errno::EACCES => e
           raise UnableToStore, e.message
         end
@@ -83,7 +81,7 @@ module Dragonfly
       private
 
       def absolute(relative_path)
-        File.join(root_path, relative_path)
+        relative_path.to_s == '.' ? root_path : File.join(root_path, relative_path)
       end
 
       def relative(absolute_path)
@@ -92,6 +90,10 @@ module Dragonfly
 
       def directory_empty?(path)
         Dir.entries(path) == ['.','..']
+      end
+      
+      def root_path?(dir)
+        root_path == dir
       end
 
       def meta_data_path(data_path)
@@ -124,16 +126,11 @@ module Dragonfly
         end
       end
 
-      def prepare_path(path)
-        dir = File.dirname(path)
-        FileUtils.mkdir_p(dir) unless File.exist?(dir)
-      end
-
       def purge_empty_directories(path)
         containing_directory = Pathname.new(path).dirname
         containing_directory.ascend do |relative_dir|
           dir = absolute(relative_dir)
-          FileUtils.rmdir dir if directory_empty?(dir)
+          FileUtils.rmdir dir if directory_empty?(dir) && !root_path?(dir)
         end
       end
 

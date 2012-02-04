@@ -32,20 +32,14 @@ module Dragonfly
   #
   class TempObject
 
+    include HasFilename
+
     # Exceptions
     class Closed < RuntimeError; end
 
-    # Class configuration
-    class << self
-
-      include Configurable
-      configurable_attr :block_size, 8192
-
-    end
-
     # Instance Methods
 
-    def initialize(obj)
+    def initialize(obj, meta={})
       if obj.is_a? TempObject
         @data = obj.get_data
         @tempfile = obj.get_tempfile
@@ -56,20 +50,40 @@ module Dragonfly
         @tempfile = obj
       elsif obj.is_a? File
         @pathname = Pathname.new(obj.path)
-        @original_filename = @pathname.basename.to_s
       elsif obj.is_a? Pathname
         @pathname = obj
-        @original_filename = @pathname.basename.to_s
       elsif obj.respond_to?(:tempfile)
         @tempfile = obj.tempfile
+      elsif obj.respond_to?(:path) # e.g. Rack::Test::UploadedFile
+        @pathname = Pathname.new(obj.path)
       else
-        raise ArgumentError, "#{self.class.name} must be initialized with a String, a Pathname, a File, a Tempfile, another TempObject, or something that responds to .tempfile"
+        raise ArgumentError, "#{self.class.name} must be initialized with a String, a Pathname, a File, a Tempfile, another TempObject, something that responds to .tempfile, or something that responds to .path"
       end
+      
       @tempfile.close if @tempfile
-      @original_filename = obj.original_filename if obj.respond_to?(:original_filename)
+
+      # Original filename
+      @original_filename = if obj.respond_to?(:original_filename)
+        obj.original_filename
+      elsif @pathname
+        @pathname.basename.to_s
+      end
+      
+      # Meta
+      @meta = meta
+      @meta[:name] ||= @original_filename if @original_filename
     end
     
     attr_reader :original_filename
+    attr_accessor :meta
+    
+    def name
+      meta[:name]
+    end
+    
+    def name=(name)
+      meta[:name] = name
+    end
 
     def data
       raise Closed, "can't read data as TempObject has been closed" if closed?
@@ -94,7 +108,7 @@ module Dragonfly
       tempfile.binmode
       if block_given?
         ret = yield f
-        tempfile.close
+        tempfile.close unless tempfile.closed?
       else
         ret = f
       end
@@ -117,12 +131,14 @@ module Dragonfly
       end
     end
 
-    def to_file(path)
+    def to_file(path, opts={})
+      mode = opts[:mode] || 0644
+      prepare_path(path) unless opts[:mkdirs] == false
       if @data
-        File.open(path, 'wb'){|f| f.write(@data) }
+        File.open(path, 'wb', mode){|f| f.write(@data) }
       else
         FileUtils.cp(self.path, path)
-        File.chmod(0644, path)
+        File.chmod(mode, path)
       end
       File.new(path, 'rb')
     end
@@ -152,6 +168,10 @@ module Dragonfly
       to_s.sub(/>$/, " #{content_string} >")
     end
 
+    def unique_id
+      @unique_id ||= "#{object_id}#{rand(1000000)}"
+    end
+
     protected
 
     # We don't use normal accessors here because #data etc. do more than just return the instance var
@@ -170,7 +190,7 @@ module Dragonfly
     private
 
     def block_size
-      self.class.block_size
+      8192
     end
 
     def copy_to_tempfile(path)
@@ -180,11 +200,16 @@ module Dragonfly
     end
 
     def new_tempfile(content=nil)
-      tempfile = Tempfile.new('dragonfly')
+      tempfile = ext ? Tempfile.new(['dragonfly', ".#{ext}"]) : Tempfile.new('dragonfly')
       tempfile.binmode
       tempfile.write(content) if content
       tempfile.close
       tempfile
+    end
+
+    def prepare_path(path)
+      dir = File.dirname(path)
+      FileUtils.mkdir_p(dir) unless File.exist?(dir)
     end
 
   end

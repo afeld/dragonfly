@@ -44,7 +44,7 @@ or (the same)
 
 or
 
-    my_model.remote_url(:some => 'option')
+    my_model.attachment.remote_url(:some => 'option')
 
 You can create your own datastore, or use one of the provided ones as outlined below.
 
@@ -89,17 +89,22 @@ To configure with the {Dragonfly::DataStorage::S3DataStore S3DataStore}:
       c.secret_access_key = '8u2u3rhkhfo23...'
       c.region = 'eu-west-1'                        # defaults to 'us-east-1'
       c.storage_headers = {'some' => 'thing'}       # defaults to {'x-amz-acl' => 'public-read'}
+      c.url_scheme = 'https'                        # defaults to 'http'
     end
 
 You can also pass these options to `S3DataStore.new` as an options hash.
 
 You can serve directly from the S3DataStore using e.g.
 
-    my_model.remote_url
+    my_model.attachment.remote_url
 
 or with an expiring url:
 
-    my_model.remote_url(:expires => 3.days.from_now)
+    my_model.attachment.remote_url(:expires => 3.days.from_now)
+
+or with an https url:
+
+    my_model.attachment.remote_url(:scheme => 'https')   # also configurable for all urls with 'url_scheme'
 
 Extra options you can use on store are `:path` and `:headers`
 
@@ -132,6 +137,8 @@ You can also pass any options to `MongoDataStore.new` as an options hash.
 
 You can't serve directly from the mongo datastore.
 
+You can optionally pass in a `:content_type` option to `store` to tell it the content's MIME type.
+
 Couch datastore
 ---------------
 To configure with the {Dragonfly::DataStorage::CouchDataStore CouchDataStore}:
@@ -150,8 +157,9 @@ To configure:
 
 You can also pass these options to `CouchDataStore.new` as an options hash.
 
-You can serve directly from the couch datastore. You can optionally pass in a `:mime_type` option to `store`
-to tell it what to use for its 'Content-Type' header.
+You can serve directly from the couch datastore.
+
+You can optionally pass in a `:content_type` option to `store` to tell it what to use for its 'Content-Type' header.
 
 Custom datastore
 ----------------
@@ -160,7 +168,9 @@ Data stores are key-value in nature, and need to implement 3 methods: `store`, `
     class MyDataStore
 
       def store(temp_object, opts={})
-        # ... use temp_object.data, temp_object.file, temp_object.path, etc. ...
+        # ... use temp_object.data, temp_object.file, temp_object.path, etc.
+        # ... also we can use temp_object.meta and store it ...
+        
         # store and return the uid
         'return_some_unique_uid'
       end
@@ -184,7 +194,8 @@ You can now configure the app to use your datastore:
     Dragonfly[:my_app_name].datastore = MyDataStore.new
 
 Notice that `store` takes a second `opts` argument.
-Any options, including `:meta`, get passed here
+Any options, get passed here.
+`:meta` is treated specially and is accessible inside `MyDataStore#store` as `temp_object.meta`
 
     uid = app.store('SOME CONTENT',
       :meta => {:name => 'great_content.txt'},

@@ -86,7 +86,7 @@ module Dragonfly
     end
 
     def store(object, opts={})
-      temp_object = object.is_a?(TempObject) ? object : TempObject.new(object)
+      temp_object = object.is_a?(TempObject) ? object : TempObject.new(object, opts[:meta] || {})
       datastore.store(temp_object, opts)
     end
 
@@ -152,6 +152,10 @@ module Dragonfly
     
     def generator_methods
       generator.functions.keys
+    end
+    
+    def analyser_methods
+      analyser.analysis_method_names
     end
     
     def job_methods
